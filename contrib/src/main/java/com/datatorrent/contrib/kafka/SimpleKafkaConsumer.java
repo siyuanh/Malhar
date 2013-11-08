@@ -221,7 +221,7 @@ public class SimpleKafkaConsumer extends KafkaConsumer
                 simpleConsumerThreads.put(pid, csInThread);
               }
             }
-          }, 0, 1000, TimeUnit.MILLISECONDS);
+          }, 0, metadataRefreshInterval, TimeUnit.MILLISECONDS);
           
           
           //offset cannot always be 0
