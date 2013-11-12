@@ -257,7 +257,7 @@ public class SimpleKafkaConsumer extends KafkaConsumer
                 ByteBuffer payload = msg.message().payload();
                 byte[] bytes = new byte[payload.limit()];
                 payload.get(bytes);
-                holdingBuffer.add(new Message(bytes));
+                putMessage(new Message(bytes));
               }
             } catch (Exception e) {
               logger.warn("Error read from leader broker, highly likely the leader broker is failing. " + e);
