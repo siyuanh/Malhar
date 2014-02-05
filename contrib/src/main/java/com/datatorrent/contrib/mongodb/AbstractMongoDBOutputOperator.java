@@ -15,12 +15,11 @@
  */
 package com.datatorrent.contrib.mongodb;
 
-import com.datatorrent.api.annotation.InputPortFieldAnnotation;
 import com.datatorrent.api.Context.OperatorContext;
-import com.datatorrent.api.DefaultInputPort;
-import com.datatorrent.api.Operator;
+import com.datatorrent.api.DAG;
+import com.datatorrent.lib.db.AbstractStoreOutputOperator;
 import com.mongodb.*;
-import java.net.UnknownHostException;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.sql.SQLException;
@@ -74,26 +73,25 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.3.2
  */
-public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase implements Operator
+public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutputOperator<T, MongoDBStore>
 {
-  private static final Logger logger = LoggerFactory.getLogger(MongoDBOutputOperator.class);
-  protected static final int DEFAULT_BATCH_SIZE = 1000;
+  
+  private static final Logger logger = LoggerFactory.getLogger(AbstractMongoDBInputOperator.class);
+  private static final int DEFAULT_BATCH_SIZE = 1000;
   @Min(1)
-  protected long batchSize = DEFAULT_BATCH_SIZE;
+  private long batchSize = DEFAULT_BATCH_SIZE;
   protected transient ArrayList<String> tableList = new ArrayList<String>(); // all the tables in the mapping
   protected transient HashMap<String, BasicDBObject> tableToDocument = new HashMap<String, BasicDBObject>(); // each table has one document to insert
   protected transient HashMap<String, List<DBObject>> tableToDocumentList = new HashMap<String, List<DBObject>>();
-  protected String maxWindowTable;
-  protected transient DBCollection maxWindowCollection;
-  protected transient long windowId;
-  protected transient int operatorId;
-//  protected transient String applicationId;
-  protected transient long lastWindowId;
-  protected transient boolean ignoreWindow;
-  protected String windowIdColumnName;
-  protected String operatorIdColumnName;
-  protected transient int tupleId;
-  protected int queryFunction;
+  private String maxWindowTable;
+  private transient long windowId;
+  private transient int operatorId;
+  private transient String appIdName;
+  private transient long lastWindowId;
+  private transient boolean ignoreWindow;
+
+  private transient int tupleId;
+  private int queryFunction;
 
   /**
    * Implement how to process tuple in derived class based on HashMap or ArrayList.
@@ -102,26 +100,9 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
    * @param tuple
    * @throws SQLException
    */
-  public abstract void processTuple(T tuple);
-  /**
-   * The input port.
-   */
-  @InputPortFieldAnnotation(name = "inputPort")
-  public final transient DefaultInputPort<T> inputPort = new DefaultInputPort<T>()
-  {
-    @Override
-    public void process(T tuple)
-    {
-      if (ignoreWindow) {
-        return; // ignore
-      }
-
-      try {
-        processTuple(tuple);
-      }
-      catch (Exception ex) {
-        throw new RuntimeException("Exception during process tuple", ex);
-      }
+  public void processTuple(T tuple){
+    if (ignoreWindow) {
+      return; // ignore
     }
   };
 
@@ -131,24 +112,11 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
    */
   public void initLastWindowInfo()
   {
-    maxWindowCollection = db.getCollection(maxWindowTable);
-    BasicDBObject query = new BasicDBObject();
-    query.put(operatorIdColumnName, operatorId);
-//    query.put(applicationIdName, "0");
-    DBCursor cursor = maxWindowCollection.find(query);
-    if (cursor.hasNext()) {
-      Object obj = cursor.next().get(windowIdColumnName);
-      lastWindowId = (Long)obj;
-    }
-    else {
-      BasicDBObject doc = new BasicDBObject();
-      doc.put(windowIdColumnName, (long)0);
-//      doc.put(applicationIdName, 0);
-      doc.put(operatorIdColumnName, operatorId);
-      maxWindowCollection.save(doc);
-    }
 
-    System.out.println("last windowid:" + lastWindowId);
+    lastWindowId = store.getOrInitializeLastWindowId(appIdName, operatorId);
+
+    logger.debug("last windowid:" + lastWindowId);
+    
   }
 
   /**
@@ -192,7 +160,7 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
       query.put("_id", new BasicDBObject("$gte", new ObjectId(low.toString())).append("$lte", new ObjectId(high.toString())));
 //      query.put(applicationIdName, 0);
       for (String table : tableList) {
-        db.getCollection(table).remove(query);
+        store.getCollection(table).remove(query);
       }
     }
     else {
@@ -209,17 +177,12 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
     if (ignoreWindow) {
       return;
     }
-
-    BasicDBObject where = new BasicDBObject(); // update maxWindowTable for windowId information
-    where.put(operatorIdColumnName, operatorId);
-    BasicDBObject value = new BasicDBObject();
-    value.put(operatorIdColumnName, operatorId);
-    value.put(windowIdColumnName, windowId);
-    maxWindowCollection.update(where, value);
+    
+    store.updateLastWindowId(appIdName, operatorId, windowId);
 
     for (String table : tableList) {
       List<DBObject> docList = tableToDocumentList.get(table);
-      db.getCollection(table).insert(docList);
+      store.getCollection(table).insert(docList);
     }
   }
 
@@ -231,30 +194,21 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
   @Override
   public void setup(OperatorContext context)
   {
+    super.setup(context);
+    appIdName = context.getValue(DAG.APPLICATION_ID);
+    if (appIdName == null) {
+      appIdName = "";
+    } 
+    
     operatorId = context.getId();
-    try {
-      mongoClient = new MongoClient(hostName);
-      db = mongoClient.getDB(dataBase);
-      if (userName != null && passWord != null) {
-        db.authenticate(userName, passWord.toCharArray());
-      }
-      initLastWindowInfo();
-      for (String table : tableList) {
-        tableToDocumentList.put(table, new ArrayList<DBObject>());
-        tableToDocument.put(table, new BasicDBObject());
-      }
-    }
-    catch (UnknownHostException ex) {
-      logger.debug(ex.toString());
+    initLastWindowInfo();
+    for (String table : tableList) {
+      tableToDocumentList.put(table, new ArrayList<DBObject>());
+      tableToDocument.put(table, new BasicDBObject());
     }
   }
 
   abstract public void setColumnMapping(String[] mapping);
-
-  @Override
-  public void teardown()
-  {
-  }
 
   /**
    * shared processTuple for HashMap and ArrayList output Operator.
@@ -289,15 +243,10 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
       List<DBObject> docList = tableToDocumentList.get(table);
       docList.add(doc);
       if (tupleId % batchSize == 0) { // do batch insert here
-        BasicDBObject where = new BasicDBObject(); // update maxWindowTable for windowId information
-        where.put(operatorIdColumnName, operatorId);
-        BasicDBObject value = new BasicDBObject();
-        value.put(operatorIdColumnName, operatorId);
-        value.put(windowIdColumnName, windowId);
-        maxWindowCollection.update(where, value);
-
-        db.getCollection(table).insert(docList);
+        store.getCollection(table).insert(docList);
         tableToDocumentList.put(table, new ArrayList<DBObject>());
+        // complete everything then update the window id
+        store.updateLastWindowId(appIdName, operatorId, lastWindowId);
       }
       else {
         tableToDocumentList.put(table, docList);
@@ -480,26 +429,6 @@ public abstract class MongoDBOutputOperator<T> extends MongoDBOperatorBase imple
   public void setMaxWindowTable(String maxWindowTable)
   {
     this.maxWindowTable = maxWindowTable;
-  }
-
-  public String getWindowIdColumnName()
-  {
-    return windowIdColumnName;
-  }
-
-  public void setWindowIdColumnName(String windowIdColumnName)
-  {
-    this.windowIdColumnName = windowIdColumnName;
-  }
-
-  public String getOperatorIdColumnName()
-  {
-    return operatorIdColumnName;
-  }
-
-  public void setOperatorIdColumnName(String operatorIdColumnName)
-  {
-    this.operatorIdColumnName = operatorIdColumnName;
   }
 
   public long getLastWindowId()

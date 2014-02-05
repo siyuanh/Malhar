@@ -16,11 +16,7 @@
 package com.datatorrent.contrib.mongodb;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.*;
-import org.bson.types.ObjectId;
 
 /**
  * MongoDB HashMap output adapter operator, which send insertion data to database.<p><br>
@@ -45,7 +41,7 @@ import org.bson.types.ObjectId;
  *
  * @since 0.3.2
  */
-public class MongoDBHashMapOutputOperator<T> extends MongoDBOutputOperator<HashMap<String, T>>
+public class MongoDBHashMapOutputOperator<T> extends AbstractMongoDBOutputOperator<HashMap<String, T>>
 {
   public transient HashMap<String, String> propTableMap = new HashMap<String, String>();  // prop-table mapping for HashMap
   public transient HashMap<String, String> propColumnMap = new HashMap<String, String>();  // prop-column mapping for HashMap
@@ -63,7 +59,6 @@ public class MongoDBHashMapOutputOperator<T> extends MongoDBOutputOperator<HashM
       String table = subtok[0];
       String column = subtok[1];
       String prop = tokens[0];
-      String type = tokens[2];
       if (tableList.contains(table) == false) {
         tableList.add(table);
       }

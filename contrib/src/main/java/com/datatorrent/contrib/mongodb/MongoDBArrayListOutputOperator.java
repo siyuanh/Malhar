@@ -16,16 +16,7 @@
 package com.datatorrent.contrib.mongodb;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.bson.types.ObjectId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * MongoDB ArrayList output adapter operator, which send insertion data to database.<p><br>
@@ -50,9 +41,8 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.3.2
  */
-public class MongoDBArrayListOutputOperator extends MongoDBOutputOperator<ArrayList<Object>>
+public class MongoDBArrayListOutputOperator extends AbstractMongoDBOutputOperator<ArrayList<Object>>
 {
-  private static final Logger logger = LoggerFactory.getLogger(MongoDBArrayListOutputOperator.class);
   private transient ArrayList<String> columnList = new ArrayList<String>();
   protected transient ArrayList<String> tableMapping = new ArrayList<String>();
 
@@ -74,7 +64,6 @@ public class MongoDBArrayListOutputOperator extends MongoDBOutputOperator<ArrayL
       }
       String column = subtok[1];
       columnList.add(column);
-      String type = tokens[1];
     }
   }
 

@@ -20,11 +20,11 @@ import com.datatorrent.api.ActivationListener;
 import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.DefaultOutputPort;
 import com.datatorrent.api.InputOperator;
-
+import com.datatorrent.lib.db.AbstractStoreOutputOperator;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
-import com.mongodb.MongoClient;
 
+import java.io.IOException;
 import java.net.UnknownHostException;
 
 import org.slf4j.LoggerFactory;
@@ -53,9 +53,9 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.3.2
  */
-public abstract class MongoDBInputOperator<T> extends MongoDBOperatorBase implements InputOperator, ActivationListener<OperatorContext>
+public abstract class AbstractMongoDBInputOperator<T> extends AbstractStoreOutputOperator<T, MongoDBStore> implements InputOperator, ActivationListener<OperatorContext>
 {
-  private static final org.slf4j.Logger logger = LoggerFactory.getLogger(MongoDBInputOperator.class);
+  private static final org.slf4j.Logger logger = LoggerFactory.getLogger(AbstractMongoDBInputOperator.class);
   private String table;
   private DBObject query;
   private transient DBCursor resultCursor;
@@ -78,7 +78,7 @@ public abstract class MongoDBInputOperator<T> extends MongoDBOperatorBase implem
   @Override
   public void emitTuples()
   {
-    resultCursor = db.getCollection(table).find(query);
+    resultCursor = store.getCollection(table).find(query);
     outputPort.emit(getTuple(resultCursor));
   }
 
@@ -86,14 +86,13 @@ public abstract class MongoDBInputOperator<T> extends MongoDBOperatorBase implem
   public void beginWindow(long windowId)
   {
     try {
-      mongoClient = new MongoClient(hostName);
-      db = mongoClient.getDB(dataBase);
-      if (userName != null && passWord != null) {
-        db.authenticate(userName, passWord.toCharArray());
-      }
+      store.connect();
     }
     catch (UnknownHostException ex) {
       logger.debug(ex.toString());
+    } catch (IOException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
     }
 
   }

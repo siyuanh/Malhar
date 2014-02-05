@@ -34,8 +34,9 @@ public class MongoDBInputOperatorTest
   public String[] arrayMapping1 = new String[columnNum];
   public final static int maxTuple = 20;
   public final static int columnNum = 5;
+  private MongoDBTestHelper helper = new MongoDBTestHelper();
 
-  public class MyMongoDBInputOperator extends MongoDBInputOperator<Object>
+  public class MyMongoDBInputOperator extends AbstractMongoDBInputOperator<Object>
   {
     @Override
     public Object getTuple(DBCursor result)
@@ -45,6 +46,13 @@ public class MongoDBInputOperatorTest
       }
       return result;
     }
+
+    @Override
+    public void processTuple(Object tuple)
+    {
+      // TODO Auto-generated method stub
+      
+    }
   };
 
   @Test
@@ -52,11 +60,9 @@ public class MongoDBInputOperatorTest
   {
     MyMongoDBInputOperator oper = new MyMongoDBInputOperator();
 
-    oper.setHostName("localhost");
-    oper.setDataBase("test");
-    oper.setUserName("test");
-    oper.setPassWord("123");
+    MongoDBStore store = helper.getTestStore();
     oper.setTable("t1");
+    oper.setStore(store);
 
 //    AttributeMap<DAGContext> attrmap = new DefaultAttributeMap<DAGContext>();
 //    attrmap.attr(DAG.STRAM_APP_ID).set("myMongoDBInputOperatorAppId");
