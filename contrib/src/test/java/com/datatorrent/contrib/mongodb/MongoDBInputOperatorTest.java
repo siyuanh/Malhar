@@ -16,52 +16,67 @@
 package com.datatorrent.contrib.mongodb;
 
 
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang.math.RandomUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datatorrent.lib.helper.OperatorContextTestHelper;
 import com.datatorrent.lib.testbench.CollectorTestSink;
-import com.mongodb.DBCursor;
+import com.google.common.collect.Sets;
+import com.mongodb.BasicDBObject;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBObject;
+import com.mongodb.MongoClient;
+
+import static junit.framework.Assert.*;
 
 /**
  *
  */
-public class MongoDBInputOperatorTest
+public class MongoDBInputOperatorTest extends MongoDBTestBase
 {
   private static final Logger logger = LoggerFactory.getLogger(MongoDBInputOperatorTest.class);
   public String[] hashMapping1 = new String[columnNum];
   public String[] arrayMapping1 = new String[columnNum];
   public final static int maxTuple = 20;
   public final static int columnNum = 5;
-  private MongoDBTestHelper helper = new MongoDBTestHelper();
+  private final Set<Map<String, Object>> expectedData = new HashSet<Map<String,Object>>();
 
-  public class MyMongoDBInputOperator extends AbstractMongoDBInputOperator<Object>
+  @SuppressWarnings("rawtypes")
+  public class MyMongoDBInputOperator extends AbstractMongoDBInputOperator<Map>
   {
     @Override
-    public Object getTuple(DBCursor result)
+    public Map getTuple(DBObject result)
     {
-      while(result.hasNext()) {
-        System.out.println(result.next().toString());
-      }
-      return result;
+      Map tuple = result.toMap();
+      tuple.remove("_id");
+      return tuple;
     }
-
-    @Override
-    public void processTuple(Object tuple)
-    {
-      // TODO Auto-generated method stub
-      
-    }
+    
   };
 
+  @SuppressWarnings({ "rawtypes", "unchecked" })
   @Test
-  public void MongoDBInputOperatorTest()
+  public void testMongoDBInputOperator()
   {
+    
+    prepareData();
+    
     MyMongoDBInputOperator oper = new MyMongoDBInputOperator();
 
-    MongoDBStore store = helper.getTestStore();
-    oper.setTable("t1");
+    MongoDBStore store = createTestStore();
+    oper.setTable("testCollection");
     oper.setStore(store);
 
 //    AttributeMap<DAGContext> attrmap = new DefaultAttributeMap<DAGContext>();
@@ -75,8 +90,37 @@ public class MongoDBInputOperatorTest
 
     oper.emitTuples();
 
+    assertEquals(expectedData, Sets.newHashSet(sink.collectedTuples));
+    
     oper.endWindow();
 
     oper.teardown();
+  }
+
+  private void prepareData()
+  {
+    expectedData.clear();
+    try {
+      MongoClient mongoClient = new MongoClient(TEST_HOSTNAME);
+      DB db = mongoClient.getDB(TEST_DB);
+      // drop the test database
+      db.authenticate(TEST_USER, TEST_PWD.toCharArray());
+      DBCollection dbc = db.createCollection("testCollection", null);
+      
+      List<DBObject> datas = new LinkedList<DBObject>();
+      for (int i = 0; i < maxTuple; i++) {
+        Map<String, Object> record = new HashMap<String, Object>();
+        record.put("col1", RandomUtils.nextInt(1000));
+        record.put("col2", RandomStringUtils.randomAlphabetic(5));
+        datas.add(new BasicDBObject(record));
+        expectedData.add(record);
+      }
+      dbc.insert(datas);
+      mongoClient.fsync(false);
+      mongoClient.close();
+    } catch (UnknownHostException e) {
+      e.printStackTrace();
+    }
+    
   }
 }

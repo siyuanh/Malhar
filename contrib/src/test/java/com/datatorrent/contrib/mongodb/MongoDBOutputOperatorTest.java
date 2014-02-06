@@ -37,7 +37,7 @@ import com.datatorrent.lib.helper.OperatorContextTestHelper;
 /**
  *
  */
-public class MongoDBOutputOperatorTest
+public class MongoDBOutputOperatorTest extends MongoDBTestBase
 {
   private static final Logger logger = LoggerFactory.getLogger(MongoDBOutputOperatorTest.class);
   public String[] hashMapping1 = new String[columnNum];
@@ -45,16 +45,10 @@ public class MongoDBOutputOperatorTest
   public final static int maxTuple = 20;
   public final static int columnNum = 5;
   public AttributeMap attrmap = new DefaultAttributeMap();
-  private MongoDBTestHelper helper = new MongoDBTestHelper();
   private Set<Map<String, Object>> expectedData = new HashSet<Map<String, Object>>(); 
 
   public void buildDataset()
   {
-//    hashMapping1[0] = "prop1:t1.col1:STRING";
-//    hashMapping1[1] = "prop2:t1.col2:STRING";
-//    hashMapping1[2] = "prop5:t1.col5:STRING";
-//    hashMapping1[3] = "prop6:t1.col4:STRING";
-//    hashMapping1[4] = "prop7:t1.col7:STRING";
 
     expectedData.clear();
     hashMapping1[0] = "prop1:t1.col1:INT";
@@ -134,7 +128,7 @@ public class MongoDBOutputOperatorTest
   }
 
   @SuppressWarnings({ "rawtypes", "unchecked" })
-  public void readDB(AbstractMongoDBOutputOperator oper)
+  public void assertResult(AbstractMongoDBOutputOperator oper)
   {
     Set<Map<String, Object>> realValue = new HashSet<Map<String, Object>>();
     for (Object o : oper.getTableList()) {
@@ -158,7 +152,7 @@ public class MongoDBOutputOperatorTest
 
     MongoDBHashMapOutputOperator<Object> oper = new MongoDBHashMapOutputOperator<Object>();
 
-    MongoDBStore store =  helper.getTestStore();
+    MongoDBStore store = createTestStore();
     oper.setBatchSize(3);
     oper.setQueryFunction(1);
     oper.setColumnMapping(hashMapping1);
@@ -184,7 +178,7 @@ public class MongoDBOutputOperatorTest
 
     }
     oper.endWindow();
-    readDB(oper);
+    assertResult(oper);
 
     oper.teardown();
   }
@@ -193,8 +187,7 @@ public class MongoDBOutputOperatorTest
   public void MongoDBArrayListOutputOperatorTest() {
     buildDataset();
     MongoDBArrayListOutputOperator oper = new MongoDBArrayListOutputOperator();
-
-    MongoDBStore store =  helper.getTestStore(); 
+    MongoDBStore store = createTestStore(); 
     oper.setBatchSize(3);
     oper.setQueryFunction(1);
     oper.setColumnMapping(arrayMapping1);
@@ -217,7 +210,7 @@ public class MongoDBOutputOperatorTest
       oper.input.process(al);
     }
     oper.endWindow();
-    readDB(oper);
+    assertResult(oper);
 
     oper.teardown();
   }

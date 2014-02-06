@@ -16,16 +16,10 @@
 package com.datatorrent.contrib.mongodb;
 
 import com.datatorrent.api.annotation.OutputPortFieldAnnotation;
-import com.datatorrent.api.ActivationListener;
-import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.DefaultOutputPort;
-import com.datatorrent.api.InputOperator;
-import com.datatorrent.lib.db.AbstractStoreOutputOperator;
+import com.datatorrent.lib.db.AbstractStoreInputOperator;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
-
-import java.io.IOException;
-import java.net.UnknownHostException;
 
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +47,7 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.3.2
  */
-public abstract class AbstractMongoDBInputOperator<T> extends AbstractStoreOutputOperator<T, MongoDBStore> implements InputOperator, ActivationListener<OperatorContext>
+public abstract class AbstractMongoDBInputOperator<T> extends AbstractStoreInputOperator<T, MongoDBStore>
 {
   private static final org.slf4j.Logger logger = LoggerFactory.getLogger(AbstractMongoDBInputOperator.class);
   private String table;
@@ -70,7 +64,7 @@ public abstract class AbstractMongoDBInputOperator<T> extends AbstractStoreOutpu
    *
    * @param message
    */
-  public abstract T getTuple(DBCursor result);
+  public abstract T getTuple(DBObject result);
 
   /**
    * query from collection
@@ -79,47 +73,10 @@ public abstract class AbstractMongoDBInputOperator<T> extends AbstractStoreOutpu
   public void emitTuples()
   {
     resultCursor = store.getCollection(table).find(query);
-    outputPort.emit(getTuple(resultCursor));
-  }
-
-  @Override
-  public void beginWindow(long windowId)
-  {
-    try {
-      store.connect();
+    while(resultCursor.hasNext()){
+      outputPort.emit(getTuple(resultCursor.next()));
     }
-    catch (UnknownHostException ex) {
-      logger.debug(ex.toString());
-    } catch (IOException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
-
-  }
-
-  @Override
-  public void endWindow()
-  {
-  }
-
-  @Override
-  public void setup(OperatorContext context)
-  {
-  }
-
-  @Override
-  public void teardown()
-  {
-  }
-
-  @Override
-  public void activate(OperatorContext ctx)
-  {
-  }
-
-  @Override
-  public void deactivate()
-  {
+    
   }
 
   public String getTable()
