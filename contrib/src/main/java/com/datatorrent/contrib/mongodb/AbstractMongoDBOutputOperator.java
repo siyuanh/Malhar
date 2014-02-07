@@ -16,8 +16,7 @@
 package com.datatorrent.contrib.mongodb;
 
 import com.datatorrent.api.Context.OperatorContext;
-import com.datatorrent.api.DAG;
-import com.datatorrent.lib.db.AbstractStoreOutputOperator;
+import com.datatorrent.lib.db.AbstractWindowAwareOutputOperator;
 import com.mongodb.*;
 
 import java.nio.ByteBuffer;
@@ -73,7 +72,7 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.3.2
  */
-public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutputOperator<T, MongoDBStore>
+public abstract class AbstractMongoDBOutputOperator<T> extends AbstractWindowAwareOutputOperator<T, MongoDBStore>
 {
   
   private static final Logger logger = LoggerFactory.getLogger(AbstractMongoDBInputOperator.class);
@@ -83,11 +82,6 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
   protected transient ArrayList<String> tableList = new ArrayList<String>(); // all the tables in the mapping
   protected transient HashMap<String, BasicDBObject> tableToDocument = new HashMap<String, BasicDBObject>(); // each table has one document to insert
   protected transient HashMap<String, List<DBObject>> tableToDocumentList = new HashMap<String, List<DBObject>>();
-  private String maxWindowTable;
-  private transient long windowId;
-  private transient int operatorId;
-  private transient String appIdName;
-  private transient long lastWindowId;
   private transient boolean ignoreWindow;
 
   private transient int tupleId;
@@ -107,19 +101,6 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
   };
 
   /**
-   * init last completed windowId information with operatorId, read from maxWindowTable.
-   * If the table is empty, insert a default value document
-   */
-  public void initLastWindowInfo()
-  {
-
-    lastWindowId = store.getOrInitializeLastWindowId(appIdName, operatorId);
-
-    logger.debug("last windowid:" + lastWindowId);
-    
-  }
-
-  /**
    * Implement Operator Interface.
    * If windowId is less than the last completed windowId, then ignore the window.
    * If windowId is equal to the last completed windowId, then remove the documents with same windowId of the operatorId, and insert the documents later
@@ -130,12 +111,12 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
   @Override
   public void beginWindow(long windowId)
   {
-    this.windowId = windowId;
+    super.beginWindow(windowId);
     tupleId = 1;
-    if (windowId < lastWindowId) {
+    if (currentWindowId < processedWindowId) {
       ignoreWindow = true;
     }
-    else if (windowId == lastWindowId) {
+    else if (currentWindowId == processedWindowId) {
       ignoreWindow = false;
       BasicDBObject query = new BasicDBObject();
 //      query.put(windowIdColumnName, windowId);
@@ -177,8 +158,6 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
     if (ignoreWindow) {
       return;
     }
-    
-    store.updateLastWindowId(appIdName, operatorId, windowId);
 
     for (String table : tableList) {
       List<DBObject> docList = tableToDocumentList.get(table);
@@ -195,13 +174,6 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
   public void setup(OperatorContext context)
   {
     super.setup(context);
-    appIdName = context.getValue(DAG.APPLICATION_ID);
-    if (appIdName == null) {
-      appIdName = "";
-    } 
-    
-    operatorId = context.getId();
-    initLastWindowInfo();
     for (String table : tableList) {
       tableToDocumentList.put(table, new ArrayList<DBObject>());
       tableToDocument.put(table, new BasicDBObject());
@@ -245,8 +217,6 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
       if (tupleId % batchSize == 0) { // do batch insert here
         store.getCollection(table).insert(docList);
         tableToDocumentList.put(table, new ArrayList<DBObject>());
-        // complete everything then update the window id
-        store.updateLastWindowId(appIdName, operatorId, lastWindowId);
       }
       else {
         tableToDocumentList.put(table, docList);
@@ -260,8 +230,8 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   public void queryFunction1(ByteBuffer bb, StringBuilder high, StringBuilder low)
   {
-    bb.putLong(windowId);
-    byte opId = (byte)(operatorId);
+    bb.putLong(currentWindowId);
+    byte opId = (operatorId).byteValue();
     bb.put(opId);
     ByteBuffer lowbb = bb;
     lowbb.put((byte)0);
@@ -286,9 +256,9 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   public void queryFunction2(ByteBuffer bb, StringBuilder high, StringBuilder low)
   {
-    int baseSec = (int)(windowId >> 32);
+    int baseSec = (int)(currentWindowId >> 32);
     bb.putInt(baseSec);
-    short winId = (short)(windowId & 0xffff);
+    short winId = (short)(currentWindowId & 0xffff);
     bb.putShort(winId);
     Integer operId = operatorId;
     for (int i = 0; i < 3; i++) {
@@ -317,14 +287,14 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   public void queryFunction3(ByteBuffer bb, StringBuilder high, StringBuilder low)
   {
-    int baseSec = (int)(windowId >> 32);
+    int baseSec = (int)(currentWindowId >> 32);
     bb.putInt(baseSec);
     Integer operId = operatorId;
     for (int i = 0; i < 3; i++) {
       byte num = (byte)(operId >> 8 * (2 - i));
       bb.put(num);
     }
-    short winId = (short)(windowId & 0xffff);
+    short winId = (short)(currentWindowId & 0xffff);
     bb.putShort(winId);
 
     ByteBuffer lowbb = bb.duplicate();
@@ -348,8 +318,8 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   void insertFunction1(ByteBuffer bb)
   {
-    bb.putLong(windowId);
-    byte oid = (byte)(operatorId);
+    bb.putLong(currentWindowId);
+    byte oid = (operatorId).byteValue();
     bb.put(oid);
     for (int i = 0; i < 3; i++) {
       byte num = (byte)(tupleId >> 8 * (2 - i));
@@ -362,14 +332,14 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   void insertFunction2(ByteBuffer bb)
   {
-    int baseSec = (int)(windowId >> 32);
+    int baseSec = (int)(currentWindowId >> 32);
     bb.putInt(baseSec);
     Integer operId = operatorId;
     for (int i = 0; i < 3; i++) {
       byte num = (byte)(operId >> 8 * (2 - i));
       bb.put(num);
     }
-    bb.putShort((short)(windowId & 0xffff));
+    bb.putShort((short)(currentWindowId & 0xffff));
     for (int i = 0; i < 3; i++) {
       byte num = (byte)(tupleId >> 8 * (2 - i));
       bb.put(num);
@@ -381,9 +351,9 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
    */
   void insertFunction3(ByteBuffer bb)
   {
-    int baseSec = (int)(windowId >> 32);
+    int baseSec = (int)(currentWindowId >> 32);
     bb.putInt(baseSec);
-    short winId = (short)(windowId & 0xffff);
+    short winId = (short)(currentWindowId & 0xffff);
     bb.putShort(winId);
     Integer operId = operatorId;
     for (int i = 0; i < 3; i++) {
@@ -420,24 +390,5 @@ public abstract class AbstractMongoDBOutputOperator<T> extends AbstractStoreOutp
   {
     this.batchSize = batchSize;
   }
-
-  public String getMaxWindowTable()
-  {
-    return maxWindowTable;
-  }
-
-  public void setMaxWindowTable(String maxWindowTable)
-  {
-    this.maxWindowTable = maxWindowTable;
-  }
-
-  public long getLastWindowId()
-  {
-    return lastWindowId;
-  }
-
-  public void setLastWindowId(long lastWindowId)
-  {
-    this.lastWindowId = lastWindowId;
-  }
+  
 }

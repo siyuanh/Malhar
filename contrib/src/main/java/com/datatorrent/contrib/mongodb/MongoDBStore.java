@@ -6,7 +6,7 @@ import java.util.List;
 
 import javax.validation.constraints.NotNull;
 
-import com.datatorrent.lib.db.Connectable;
+import com.datatorrent.lib.db.WindowAware;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
@@ -14,7 +14,7 @@ import com.mongodb.DBCursor;
 import com.mongodb.MongoClient;
 import com.mongodb.ServerAddress;
 
-public class MongoDBStore implements Connectable
+public class MongoDBStore implements WindowAware
 {
   
   /**
@@ -84,31 +84,7 @@ public class MongoDBStore implements Connectable
     }
   }
 
-  public long getOrInitializeLastWindowId(String appIdName, int operatorId)
-  {
-    BasicDBObject query = new BasicDBObject();
-    query.put(operatorIdColumnName, operatorId);
-    query.put(appIdNameColumnName, appIdName);
-    DBCursor cursor = maxWindowCollection.find(query);
-    try {
-      if (cursor.hasNext()) {
-        Object obj = cursor.next().get(windowIdColumnName);
-        return (Long) obj;
-      } else {
-        // last window id not found for this app operator
-        BasicDBObject doc = new BasicDBObject();
-        doc.put(windowIdColumnName, (long)0);
-        doc.put(appIdNameColumnName, appIdName);
-        doc.put(operatorIdColumnName, operatorId);
-        maxWindowCollection.save(doc);
-        return 0;
-      }
-    } finally {
-      if(cursor!=null){
-        cursor.close();
-      }
-    }
-  }
+
 
   public void insertLastWindowId(String appIdName, int operatorId, long windowId)
   {
@@ -119,16 +95,7 @@ public class MongoDBStore implements Connectable
     maxWindowCollection.save(doc);
   }
 
-  public void updateLastWindowId(String appIdName, int operatorId, long windowId)
-  {
-    BasicDBObject where = new BasicDBObject(); // update maxWindowTable for windowId information
-    where.put(operatorIdColumnName, operatorId);
-    where.put(appIdNameColumnName, appIdName);
-    BasicDBObject value = new BasicDBObject();
-    value.put(windowIdColumnName, windowId);
-    maxWindowCollection.findAndModify(where, value); 
-  }
-  
+
   public String getWindowIdColumnName()
   {
     return windowIdColumnName;
@@ -205,6 +172,45 @@ public class MongoDBStore implements Connectable
   public String getDataBase()
   {
     return dataBase;
+  }
+
+  @Override
+  public long getCommittedWindowId(String appId, int operatorId)
+  {
+    BasicDBObject query = new BasicDBObject();
+    query.put(operatorIdColumnName, operatorId);
+    query.put(appIdNameColumnName, appId);
+    DBCursor cursor = maxWindowCollection.find(query);
+    try {
+      if (cursor.hasNext()) {
+        Object obj = cursor.next().get(windowIdColumnName);
+        return (Long) obj;
+      } else {
+        // last window id not found for this app operator
+        BasicDBObject doc = new BasicDBObject();
+        doc.put(windowIdColumnName, (long)0);
+        doc.put(appIdNameColumnName, appId);
+        doc.put(operatorIdColumnName, operatorId);
+        maxWindowCollection.save(doc);
+        return 0;
+      }
+    } finally {
+      if(cursor!=null){
+        cursor.close();
+      }
+    }
+  }
+
+  @Override
+  public void storeCommittedWindowId(String appId, int operatorId, long windowId)
+  {
+    BasicDBObject where = new BasicDBObject(); // update maxWindowTable for windowId information
+    where.put(operatorIdColumnName, operatorId);
+    where.put(appIdNameColumnName, appId);
+    BasicDBObject value = new BasicDBObject();
+    value.put(windowIdColumnName, windowId);
+    maxWindowCollection.findAndModify(where, value); 
+    
   }
   
 

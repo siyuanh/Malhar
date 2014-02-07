@@ -25,17 +25,16 @@ import com.datatorrent.api.DAG;
  * @param <T> type of the tuple
  * @param <S> store type
  */
-public abstract class AbstractWindowAwareOutputOperator<T, S extends WindowAware> extends AbstractStoreOutputOperator<T, S>
+public abstract class AbstractWindowAwareOutputOperator<T, S extends Connectable> extends AbstractStoreOutputOperator<T, S>
 {
-  protected String appId;
-  protected Integer operatorId;
-  protected long committedWindowId = -1;
-
+  protected long processedWindowId = -1;
+  protected transient String appId;
+  protected transient Integer operatorId;
   protected transient long currentWindowId = -1;
 
   public AbstractWindowAwareOutputOperator()
   {
-    committedWindowId = -1;
+    processedWindowId = -1;
     currentWindowId = -1;
   }
 
@@ -45,12 +44,18 @@ public abstract class AbstractWindowAwareOutputOperator<T, S extends WindowAware
     super.setup(context);
     appId = context.getValue(DAG.APPLICATION_ID);
     operatorId = context.getId();
-    committedWindowId = store.getCommittedWindowId(appId, operatorId);
   }
 
   @Override
   public void beginWindow(long windowId)
   {
     currentWindowId = windowId;
+  }
+  
+  @Override
+  public void endWindow()
+  {
+    super.endWindow();
+    processedWindowId = currentWindowId;
   }
 }

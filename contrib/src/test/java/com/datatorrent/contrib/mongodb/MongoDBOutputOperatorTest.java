@@ -165,8 +165,8 @@ public class MongoDBOutputOperatorTest extends MongoDBTestBase
       store.getCollection(table).drop();
     }
 
-    oper.beginWindow(oper.getLastWindowId() + 1);
-    logger.debug("beginwindow {}", oper.getLastWindowId() + 1);
+    oper.beginWindow(0);
+    logger.debug("beginwindow {}", 0);
 
     for (int i = 0; i < maxTuple; ++i) {
       HashMap<String, Object> hm = generateHashMapData(i, oper);
@@ -199,8 +199,8 @@ public class MongoDBOutputOperatorTest extends MongoDBTestBase
       store.getCollection(table).drop();
     }
 
-    oper.beginWindow(oper.getLastWindowId() + 1);
-    logger.debug("beginwindow {}", oper.getLastWindowId() + 1);
+    oper.beginWindow(0);
+    logger.debug("beginwindow {}", 0);
 
     for (int i = 0; i < maxTuple; ++i) {
       ArrayList<Object> al = generateArrayListData(i, oper);
