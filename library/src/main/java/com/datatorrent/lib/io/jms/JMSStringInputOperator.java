@@ -21,37 +21,26 @@ import javax.jms.StreamMessage;
 import javax.jms.TextMessage;
 
 /**
- * This is a single port input operator,
- * which consumes messages from an ActiveMQ message bus and emits strings.
- * <p></p>
- * @displayName Active MQ Single Port Input (String)
+ * A {@link AbstractJMSInputOperator} which emits Strings.
+ *
+ * @displayName JMS Input (String)
  * @category Messaging
  * @tags jms, input operator, string
- *
  * @since 0.3.3
  */
-public class ActiveMQSinglePortStringInputOperator extends AbstractActiveMQSinglePortInputOperator<String>
+public class JMSStringInputOperator extends AbstractJMSInputOperator<String>
 {
-	@Override
-	public String getTuple(Message message)
-	{
-		String msg = null;
-    try {
-      if (message instanceof TextMessage) {
-        msg = ((TextMessage)message).getText();
-        //logger.debug("Received Message: {}", msg);
-      }
-      else if (message instanceof StreamMessage) {
-        msg = ((StreamMessage)message).readString();
-      }
-      else {
-        throw new IllegalArgumentException("Unhandled message type " + message.getClass().getName());
-      }
+  @Override
+  public String convert(Message message) throws JMSException
+  {
+    if (message instanceof TextMessage) {
+      return ((TextMessage) message).getText();
     }
-    catch (JMSException ex) {
-      return msg;
+    else if (message instanceof StreamMessage) {
+      return ((StreamMessage) message).readString();
     }
-    return msg;
-	}
-
+    else {
+      throw new IllegalArgumentException("Unhandled message type " + message.getClass().getName());
+    }
+  }
 }
