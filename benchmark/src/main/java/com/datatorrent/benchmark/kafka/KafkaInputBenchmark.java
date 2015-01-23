@@ -16,7 +16,6 @@
 
 package com.datatorrent.benchmark.kafka;
 
-import java.util.HashSet;
 import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
@@ -32,7 +31,7 @@ import com.datatorrent.api.annotation.ApplicationAnnotation;
 import com.datatorrent.contrib.kafka.HighlevelKafkaConsumer;
 import com.datatorrent.contrib.kafka.KafkaConsumer;
 import com.datatorrent.contrib.kafka.SimpleKafkaConsumer;
-import com.google.common.collect.Sets;
+
 
 /**
  * The stream app to test the benckmark of kafka
@@ -81,11 +80,12 @@ public class KafkaInputBenchmark implements StreamingApplication
       consumer = new HighlevelKafkaConsumer(props);
     } else {
       // topic is set via property file
-      consumer = new SimpleKafkaConsumer(null, 10000, 100000, "test_kafka_autop_client", new HashSet<Integer>());
+      consumer = new SimpleKafkaConsumer(null, 10000, 100000, "test_kafka_autop_client", null);
     }
 
-    consumer.setBrokerSet(Sets.newHashSet(conf.get("dt.kafka.brokerlist").split("\\s*,\\s*")));
+    
     bpkio.setInitialPartitionCount(1);
+    bpkio.setZookeeper(conf.get("kafka.zookeeper"));
     //bpkio.setTuplesBlast(1024 * 1024);
     bpkio.setConsumer(consumer);
     bpkio = dag.addOperator("KafkaBenchmarkConsumer", bpkio);

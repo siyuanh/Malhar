@@ -26,6 +26,8 @@ import org.slf4j.LoggerFactory;
 
 import com.datatorrent.api.*;
 import com.datatorrent.api.DAG.Locality;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.SetMultimap;
 
 /**
  * A test to verify the input operator will be automatically partitioned per kafka partition
@@ -142,11 +144,9 @@ public class KafkaPartitionableInputOperatorTest extends KafkaOperatorTestBase
 
     //set topic
     consumer.setTopic(TEST_TOPIC);
-    //set the brokerlist used to initialize the partition
-    Set<String> brokerSet =  new HashSet<String>();
-    brokerSet.add("localhost:9092");
-    brokerSet.add("localhost:9093");
-    consumer.setBrokerSet(brokerSet);
+    SetMultimap<String, String> zookeeper = HashMultimap.create();
+    zookeeper.put(KafkaPartition.DEFAULT_CLUSTERID, "localhost:" + KafkaOperatorTestBase.TEST_ZOOKEEPER_PORT);
+    consumer.setZookeeper(zookeeper);
     consumer.setInitialOffset("earliest");
 
     node.setConsumer(consumer);
@@ -164,7 +164,7 @@ public class KafkaPartitionableInputOperatorTest extends KafkaOperatorTestBase
     lc.runAsync();
 
     // Wait 30s for consumer finish consuming all the messages
-    Assert.assertTrue("TIMEOUT: 30s ", latch.await(30000, TimeUnit.MILLISECONDS));
+    Assert.assertTrue("TIMEOUT: 30s ", latch.await(300000, TimeUnit.MILLISECONDS));
 
     // Check results
     Assert.assertEquals("Collections size", 1, collections.size());

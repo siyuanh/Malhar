@@ -34,9 +34,9 @@ public interface OffsetManager
    * <br>
    * The method is called at the first attempt of creating partitions and the return value is used as initial offset for simple consumer
    * 
-   * @return Map of Kafka partition id as key and offset as value
+   * @return Map of Kafka KafkaPartition as key and long offset as value
    */
-  public Map<Integer, Long> loadInitialOffsets();
+  public Map<KafkaPartition, Long> loadInitialOffsets();
 
 
   /**
@@ -44,6 +44,6 @@ public interface OffsetManager
    * <br>
    * The method is called every {@link AbstractPartitionableKafkaInputOperator#getRepartitionCheckInterval()} to update the current offset
    */
-  public void updateOffsets(Map<Integer, Long> offsetsOfPartitions);
+  public void updateOffsets(Map<KafkaPartition, Long> offsetsOfPartitions);
 
 }

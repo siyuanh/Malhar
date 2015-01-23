@@ -72,6 +72,7 @@ public class KafkaOperatorTestBase
       standaloneServerFactory = new NIOServerCnxnFactory();
       standaloneServerFactory.configure(new InetSocketAddress(clientPort), numConnections);
       standaloneServerFactory.startup(kserver); // start the zookeeper server.
+      Thread.sleep(2000);
       //kserver.startup();
     }
     catch (InterruptedException ex) {
@@ -110,9 +111,14 @@ public class KafkaOperatorTestBase
       props.setProperty("log.dirs", new File(baseDir, kafkadir2).toString());
       props.setProperty("port", "" + TEST_KAFKA_BROKER2_PORT);
       props.setProperty("num.partitions", "2");
-      props.setProperty("default.replication.factor", "2");
+      props.setProperty("default.replication.factor", "1");
       kserver2 = new KafkaServerStartable(new KafkaConfig(props));
       kserver2.startup();
+    }
+    try {
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
     }
 
   }
@@ -163,7 +169,7 @@ public class KafkaOperatorTestBase
     //Right now, there is no programmatic synchronized way to create the topic. have to wait 2 sec to make sure the topic is created
     // So the tests will not hit any bizarre failure
     try {
-      Thread.sleep(2000);
+      Thread.sleep(3000);
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
