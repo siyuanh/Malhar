@@ -36,7 +36,7 @@ import com.datatorrent.api.DAG;
 import com.datatorrent.api.StorageAgent;
 import com.datatorrent.api.annotation.Stateless;
 
-import com.datatorrent.lib.io.fs.AbstractFSDirectoryInputOperator;
+import com.datatorrent.lib.io.fs.AbstractFileInputOperator;
 import com.datatorrent.lib.util.FSStorageAgent;
 
 /**
@@ -60,7 +60,7 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
   /**
    * When an operator can partition itself dynamically then there is no guarantee that an input state which was being handled
    * by one instance previously will be handled by the same instance after partitioning. <br/>
-   * For eg. An {@link AbstractFSDirectoryInputOperator} instance which reads a File X till offset l (not check-pointed) may no longer be the
+   * For eg. An {@link AbstractFileInputOperator} instance which reads a File X till offset l (not check-pointed) may no longer be the
    * instance that handles file X after repartitioning as no. of instances may have changed and file X is re-hashed to another instance. <br/>
    * The new instance wouldn't know from what point to read the File X unless it reads the idempotent storage of all the operators for the window
    * being replayed and fix it's state.
@@ -95,7 +95,7 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
    */
   public static class FSIdempotentStorageManager implements IdempotentStorageManager
   {
-    protected FSStorageAgent storageAgent;
+    protected transient FSStorageAgent storageAgent;
 
     @NotNull
     protected String recoveryPath;
@@ -123,7 +123,6 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
     public FSIdempotentStorageManager()
     {
       replayState = TreeMultimap.create();
-      deletedOperators = Sets.newHashSet();
       largestRecoveryWindow = Stateless.WINDOW_ID;
     }
 
@@ -133,10 +132,9 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
       Configuration configuration = new Configuration();
       appPath = new Path(recoveryPath + '/' + context.getValue(DAG.APPLICATION_ID));
 
-      if (storageAgent == null) {
-        storageAgent = new FSStorageAgent(appPath.toString(), configuration);
-      }
       try {
+        storageAgent = new FSStorageAgent(appPath.toString(), configuration);
+
         fs = FileSystem.newInstance(appPath.toUri(), configuration);
 
         if (fs.exists(appPath)) {
@@ -267,6 +265,13 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
       Preconditions.checkArgument(newManagers != null && !newManagers.isEmpty(), "there has to be one idempotent storage manager");
       FSIdempotentStorageManager deletedOperatorsManager = null;
 
+      if (removedOperatorIds != null && !removedOperatorIds.isEmpty()) {
+        if (this.deletedOperators == null) {
+          this.deletedOperators = Sets.newHashSet();
+        }
+        this.deletedOperators.addAll(removedOperatorIds);
+      }
+
       for (IdempotentStorageManager storageManager : newManagers) {
 
         FSIdempotentStorageManager lmanager = (FSIdempotentStorageManager) storageManager;
@@ -276,21 +281,27 @@ public interface IdempotentStorageManager extends StorageAgent, Component<Contex
         if (lmanager.deletedOperators != null) {
           deletedOperatorsManager = lmanager;
         }
+        //only one physical instance can manage deleted operators so clearing this field for rest of the instances.
+        if (lmanager != deletedOperatorsManager) {
+          lmanager.deletedOperators = null;
+        }
       }
 
       if (removedOperatorIds == null || removedOperatorIds.isEmpty()) {
         //Nothing to do
         return;
       }
+      if (this.deletedOperators != null) {
 
-      //If some operators were removed then there needs to be a manager which can clean there state when it is not needed.
-      if (deletedOperatorsManager == null) {
-        //None of the managers were handling deleted operators data.
-        deletedOperatorsManager = (FSIdempotentStorageManager) newManagers.iterator().next();
-        deletedOperatorsManager.deletedOperators = Sets.newHashSet();
+        //If some operators were removed then there needs to be a manager which can clean there state when it is not needed.
+        if (deletedOperatorsManager == null) {
+          //None of the managers were handling deleted operators data.
+          deletedOperatorsManager = (FSIdempotentStorageManager) newManagers.iterator().next();
+          deletedOperatorsManager.deletedOperators = Sets.newHashSet();
+        }
+
+        deletedOperatorsManager.deletedOperators.addAll(removedOperatorIds);
       }
-
-      deletedOperatorsManager.deletedOperators.addAll(removedOperatorIds);
     }
 
     @Override

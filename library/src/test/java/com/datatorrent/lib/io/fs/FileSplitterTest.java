@@ -79,12 +79,12 @@ public class FileSplitterTest
 
       this.fileSplitter = new FileSplitter();
 
-      AbstractFSDirectoryInputOperator.DirectoryScanner scanner = new AbstractFSDirectoryInputOperator.DirectoryScanner();
+      AbstractFileInputOperator.DirectoryScanner scanner = new AbstractFileInputOperator.DirectoryScanner();
       scanner.setFilePatternRegexp(".*[.]txt");
       fileSplitter.setScanner(scanner);
       fileSplitter.setDirectory(dataDirectory);
       fileSplitter.setIdempotentStorageManager(new IdempotentStorageManager.NoopIdempotentStorageManager());
-      fileSplitter.setup(new OperatorContextTestHelper.TestIdOperatorContext(0));
+      fileSplitter.setup(new OperatorContextTestHelper.TestIdOperatorContext(0, new Attribute.AttributeMap.DefaultAttributeMap()));
 
       fileMetadataSink = new CollectorTestSink<Object>();
       fileSplitter.filesMetadataOutput.setSink(fileMetadataSink);

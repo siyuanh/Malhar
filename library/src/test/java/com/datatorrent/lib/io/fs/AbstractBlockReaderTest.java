@@ -16,7 +16,6 @@
 package com.datatorrent.lib.io.fs;
 
 import java.io.*;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -40,12 +39,17 @@ import com.datatorrent.lib.testbench.CollectorTestSink;
 
 public class AbstractBlockReaderTest
 {
-  public static class TestMeta extends TestWatcher
+  AbstractBlockReader.AbstractLineReader<String> getBlockReader()
+  {
+    return new BlockReader();
+  }
+
+  public class TestMeta extends TestWatcher
   {
     String dataFilePath;
     File dataFile;
     Context.OperatorContext readerContext;
-    BlockReader blockReader;
+    AbstractBlockReader.AbstractLineReader<String> blockReader;
     CollectorTestSink<Object> blockMetadataSink;
     CollectorTestSink<Object> messageSink;
 
@@ -58,7 +62,7 @@ public class AbstractBlockReaderTest
       this.dataFilePath = "src/test/resources/reader_test_data.csv";
       this.dataFile = new File(dataFilePath);
       appId = Long.toHexString(System.currentTimeMillis());
-      blockReader = new BlockReader();
+      blockReader = getBlockReader();
 
       Attribute.AttributeMap.DefaultAttributeMap readerAttr = new Attribute.AttributeMap.DefaultAttributeMap();
       readerAttr.put(DAG.APPLICATION_ID, appId);
@@ -181,7 +185,6 @@ public class AbstractBlockReaderTest
   public static final class BlockReader extends AbstractBlockReader.AbstractLineReader<String>
   {
     private final Pattern datePattern = Pattern.compile("\\d{2}?/\\d{2}?/\\d{4}?");
-    SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss.SSS");
 
     @Override
     protected String convertToRecord(byte[] bytes)
