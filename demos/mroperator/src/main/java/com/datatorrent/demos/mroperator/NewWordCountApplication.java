@@ -27,11 +27,10 @@ import com.datatorrent.api.annotation.ApplicationAnnotation;
  *
  * @since 0.9.0
  */
-@ApplicationAnnotation(name="NewWordCountDemo")
+@ApplicationAnnotation(name="WordCountDemo")
 public class NewWordCountApplication extends MapReduceApplication<LongWritable, Text, Text, IntWritable> {
 
-	@Override
-	public void conf() {
+	public void NewWordCountApplication() {
 		setMapClass(WordCount.Map.class);
 		setReduceClass(WordCount.Reduce.class);
 		setCombineClass(WordCount.Reduce.class);

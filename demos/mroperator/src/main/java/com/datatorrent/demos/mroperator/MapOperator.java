@@ -19,41 +19,27 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.validation.constraints.Min;
+
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.serializer.Deserializer;
 import org.apache.hadoop.io.serializer.SerializationFactory;
 import org.apache.hadoop.io.serializer.Serializer;
-import org.apache.hadoop.mapred.Counters;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapred.InputFormat;
-import org.apache.hadoop.mapred.InputSplit;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.KeyValueTextInputFormat;
-import org.apache.hadoop.mapred.Mapper;
-import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hadoop.mapred.Reducer;
-import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapred.TextInputFormat;
+import org.apache.hadoop.mapred.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.datatorrent.lib.io.fs.AbstractHDFSInputOperator;
-import com.datatorrent.lib.util.KeyHashValPair;
 import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.DefaultOutputPort;
 import com.datatorrent.api.DefaultPartition;
+import com.datatorrent.api.InputOperator;
 import com.datatorrent.api.Partitioner;
+
 import com.datatorrent.demos.mroperator.ReporterImpl.ReporterType;
+import com.datatorrent.lib.util.KeyHashValPair;
 
 /**
  * <p>
@@ -63,13 +49,11 @@ import com.datatorrent.demos.mroperator.ReporterImpl.ReporterType;
  * @since 0.9.0
  */
 @SuppressWarnings({ "unchecked"})
-public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator implements Partitioner<MapOperator<K1, V1, K2, V2>>
+public class MapOperator<K1, V1, K2, V2>  implements InputOperator, Partitioner<MapOperator<K1, V1, K2, V2>>
 {
 
   private static final Logger logger = LoggerFactory.getLogger(MapOperator.class);
-
   private String dirName;
-
   private boolean emitPartitioningCountOnce = false;
   private boolean emitLastCountOnce = false;
   private int operatorId;
@@ -83,6 +67,8 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
   public final transient DefaultOutputPort<KeyHashValPair<Integer, Integer>> outputCount = new DefaultOutputPort<KeyHashValPair<Integer, Integer>>();
   public final transient DefaultOutputPort<KeyHashValPair<K2, V2>> output = new DefaultOutputPort<KeyHashValPair<K2, V2>>();
   private transient JobConf jobConf;
+  @Min(1)
+  private int partitionCount = 1;
 
   public Class<? extends InputSplit> getInputSplitClass()
   {
@@ -112,7 +98,16 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
   public void setDirName(String dirName)
   {
     this.dirName = dirName;
-    super.setFilePath(dirName);
+  }
+
+  public int getPartitionCount()
+  {
+    return partitionCount;
+  }
+
+  public void setPartitionCount(int partitionCount)
+  {
+    this.partitionCount = partitionCount;
   }
 
   @Override
@@ -130,7 +125,12 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
         logger.info("error getting record reader {}", e.getMessage());
       }
     }
-    super.beginWindow(windowId);
+  }
+
+  @Override
+  public void teardown()
+  {
+
   }
 
   @Override
@@ -188,17 +188,7 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
   }
 
   @Override
-  public void activate(OperatorContext context)
-  {
-  }
-
-  @Override
-  public void deactivate()
-  {
-  }
-
-  @Override
-  public void emitTuples(FSDataInputStream stream)
+  public void emitTuples()
   {
     if (!emittedAll) {
       try {
@@ -290,6 +280,8 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
   @Override
   public Collection<Partition<MapOperator<K1, V1, K2, V2>>> definePartitions(Collection<Partition<MapOperator<K1, V1, K2, V2>>> partitions, int incrementalCapacity)
   {
+    int tempPartitionCount = partitionCount;
+
     Collection c = partitions;
     Collection<Partition<MapOperator<K1, V1, K2, V2>>> operatorPartitions = c;
     Partition<MapOperator<K1, V1, K2, V2>> template;
@@ -300,7 +292,7 @@ public class MapOperator<K1, V1, K2, V2> extends AbstractHDFSInputOperator imple
     if (outstream.size() == 0) {
       InputSplit[] splits;
       try {
-        splits = getSplits(new JobConf(conf), incrementalCapacity + 1, template.getPartitionedInstance().getDirName());
+        splits = getSplits(new JobConf(conf), tempPartitionCount, template.getPartitionedInstance().getDirName());
       }
       catch (Exception e1) {
         logger.info(" can't get splits {}", e1.getMessage());

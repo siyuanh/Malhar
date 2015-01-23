@@ -19,21 +19,20 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.commons.lang.mutable.MutableLong;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.datatorrent.lib.counters.BasicCounters;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 import com.datatorrent.api.*;
+
+import com.datatorrent.lib.counters.BasicCounters;
 
 /**
  * AbstractBlockReader processes a block of data from a bigger file.<br/>
@@ -111,19 +110,9 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
     @Override
     public void process(FileSplitter.BlockMetadata blockMetadata)
     {
-      LOG.debug("block {}", blockMetadata.hashCode());
+      blockQueue.add(blockMetadata);
       if (blocksPerWindow < threshold) {
-        try {
-          blocksMetadataOutput.emit(blockMetadata);
-          processBlockMetadata(blockMetadata);
-          blocksPerWindow++;
-        }
-        catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-      }
-      else {
-        blockQueue.add(blockMetadata);
+        processHeadBlock();
       }
     }
 
@@ -158,11 +147,22 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
     sleepTimeMillis = context.getValue(Context.OperatorContext.SPIN_MILLIS);
     configuration = new Configuration();
     try {
-      fs = FileSystem.newInstance(configuration);
+      fs = getFSInstance();
     }
     catch (IOException e) {
       throw new RuntimeException("creating fs", e);
     }
+  }
+
+  /**
+   * Override this method to change the FileSystem instance that is used by the operator.
+   *
+   * @return A FileSystem object.
+   * @throws IOException
+   */
+  protected FileSystem getFSInstance() throws IOException
+  {
+    return FileSystem.newInstance(configuration);
   }
 
   @Override
@@ -186,17 +186,24 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
     }
     else {
       do {
-        FileSplitter.BlockMetadata top = blockQueue.poll();
-        try {
-          blocksMetadataOutput.emit(top);
-          processBlockMetadata(top);
-          blocksPerWindow++;
-        }
-        catch (IOException e) {
-          throw new RuntimeException(e);
-        }
+        processHeadBlock();
       }
       while (blocksPerWindow < threshold && !blockQueue.isEmpty());
+    }
+  }
+
+  private void processHeadBlock()
+  {
+    FileSplitter.BlockMetadata top = blockQueue.poll();
+    try {
+      if (blocksMetadataOutput.isConnected()) {
+        blocksMetadataOutput.emit(top);
+      }
+      processBlockMetadata(top);
+      blocksPerWindow++;
+    }
+    catch (IOException e) {
+      throw new RuntimeException(e);
     }
   }
 
@@ -211,35 +218,47 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
   protected void processBlockMetadata(FileSplitter.BlockMetadata blockMetadata) throws IOException
   {
     long blockStartTime = System.currentTimeMillis();
-    final long blockLength = blockMetadata.getLength();
 
     initReaderFor(blockMetadata);
     try {
-      long blockOffset = blockMetadata.getOffset();
-      while (blockOffset < blockLength) {
-
-        Entity entity = readEntity(blockMetadata, blockOffset);
-
-        //Block processing is complete.
-        if (entity == null) {
-          break;
-        }
-        counters.getCounter(ReaderCounterKeys.BYTES).add(entity.usedBytes);
-        blockOffset += entity.usedBytes;
-
-        R record = convertToRecord(entity.record);
-
-        //If the record is partial then ignore the record.
-        if (isRecordValid(record)) {
-          counters.getCounter(ReaderCounterKeys.RECORDS).increment();
-          messages.emit(new ReaderRecord<R>(blockMetadata.getBlockId(), record));
-        }
-      }
+      readBlock(blockMetadata);
     }
     finally {
       closeCurrentReader();
     }
     counters.getCounter(ReaderCounterKeys.TIME).add(System.currentTimeMillis() - blockStartTime);
+  }
+
+  /**
+   * Override this if you want to change how much of the block is read.
+   *
+   * @param blockMetadata
+   * @throws IOException
+   */
+  protected void readBlock(FileSplitter.BlockMetadata blockMetadata) throws IOException
+  {
+    final long blockLength = blockMetadata.getLength();
+
+    long blockOffset = blockMetadata.getOffset();
+    while (blockOffset < blockLength) {
+
+      Entity entity = readEntity(blockMetadata, blockOffset);
+
+      //The construction of entity was not complete as record end was never found.
+      if (entity == null) {
+        break;
+      }
+      counters.getCounter(ReaderCounterKeys.BYTES).add(entity.usedBytes);
+      blockOffset += entity.usedBytes;
+
+      R record = convertToRecord(entity.record);
+
+      //If the record is partial then ignore the record.
+      if (isRecordValid(record)) {
+        counters.getCounter(ReaderCounterKeys.RECORDS).increment();
+        messages.emit(new ReaderRecord<R>(blockMetadata.getBlockId(), record));
+      }
+    }
   }
 
   /**
@@ -268,6 +287,10 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
     }
   }
 
+  /**
+   * <b>Note:</b> This partitioner does not support parallel partitioning.<br/><br/>
+   * {@inheritDoc}
+   */
   @SuppressWarnings("unchecked")
   @Override
   public Collection<Partition<AbstractBlockReader<R>>> definePartitions(Collection<Partition<AbstractBlockReader<R>>> partitions, int incrementalCapacity)
@@ -547,12 +570,12 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
    * Represents the record and the total bytes used by an {@link AbstractBlockReader} to construct the record.<br/>
    * used bytes can be different from the bytes in the record.
    */
-  protected static class Entity
+  public static class Entity
   {
-    byte[] record;
-    long usedBytes;
+    public byte[] record;
+    public long usedBytes;
 
-    void clear()
+    public void clear()
     {
       record = null;
       usedBytes = -1;
@@ -600,7 +623,9 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
   }
 
   /**
-   * An implementation of {@link AbstractBlockReader} that splits the block into records on '\n' or '\r'.
+   * An implementation of {@link AbstractBlockReader} that splits the block into records on '\n' or '\r'.<br/>
+   * This implementation is based on the assumption that there is a way to validate a record by checking the start of
+   * each record.
    *
    * @param <R> type of record.
    */
@@ -721,7 +746,7 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
     /**
      * Sets the buffer size of read.
      *
-     * @param bufferSize
+     * @param bufferSize size of the buffer
      */
     public void setBufferSize(int bufferSize)
     {
@@ -740,6 +765,69 @@ public abstract class AbstractBlockReader<R> extends BaseOperator implements
 
     @SuppressWarnings("UnusedDeclaration")
     private static final Logger LOG = LoggerFactory.getLogger(AbstractLineReader.class);
+  }
+
+  /**
+   * An implementation of {@link AbstractBlockReader} that splits the block into records on '\n' or '\r'.<br/>
+   * This implementation doesn't need a way to validate the start of a record.<br/>
+   *
+   * A reader starts parsing the block (except the first block of the file) from the first eol character.
+   * It is a less optimized version of an {@link AbstractLineReader} where a reader always reads beyond the block
+   * boundary.
+   *
+   * @param <R> type of record.
+   */
+  public static abstract class AbstractReadAheadLineReader<R> extends AbstractLineReader<R>
+  {
+    @Override
+    protected void readBlock(FileSplitter.BlockMetadata blockMetadata) throws IOException
+    {
+      final long blockLength = blockMetadata.getLength();
+
+      long blockOffset = blockMetadata.getOffset();
+
+      boolean firstEntity = true;
+
+      //equals ensures that the reader always reads ahead.
+      while (blockOffset < blockLength || (blockOffset == blockLength && !blockMetadata.isLastBlock())) {
+
+        Entity entity = readEntity(blockMetadata, blockOffset);
+
+        //The construction of entity was not complete as record end was never found.
+        if (entity == null) {
+          break;
+        }
+        counters.getCounter(ReaderCounterKeys.BYTES).add(entity.usedBytes);
+        blockOffset += entity.usedBytes;
+
+        //ignore first entity of  all the blocks except the first one because those bytes
+        //were used during the parsing of the previous block.
+        if (blockMetadata.getOffset() != 0 && firstEntity) {
+          firstEntity = false;
+          continue;
+        }
+
+        R record = convertToRecord(entity.record);
+        counters.getCounter(ReaderCounterKeys.RECORDS).increment();
+        messages.emit(new ReaderRecord<R>(blockMetadata.getBlockId(), record));
+      }
+
+    }
+
+    /**
+     * This method is not used for {@link AbstractReadAheadLineReader} as the first entity of all the blocks
+     * (except the first block of the file) is ignored.
+     *
+     * @param record
+     * @return always true
+     */
+    @Override
+    protected boolean isRecordValid(R record)
+    {
+      return true;
+    }
+
+    private static final long serialVersionUID = 201501161525L;
   }
 
   private static final long serialVersionUID = 201408261653L;
