@@ -209,7 +209,7 @@ public class FileSplitter extends AbstractFileInputOperator<FileSplitter.FileMet
     private long pos;
     private int blockNumber;
 
-    private FileSplitter splitter;
+    private final FileSplitter splitter;
 
     public BlockMetadataIterator(FileSplitter splitter, FileMetadata fileMetadata, long blockSize)
     {
@@ -261,6 +261,7 @@ public class FileSplitter extends AbstractFileInputOperator<FileSplitter.FileMet
     private long length;
     private final boolean isLastBlock;
 
+    @SuppressWarnings("unused")
     protected BlockMetadata()
     {
       blockId = -1;
