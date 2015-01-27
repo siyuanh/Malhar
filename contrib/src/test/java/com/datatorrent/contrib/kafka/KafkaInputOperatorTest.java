@@ -108,7 +108,7 @@ public class KafkaInputOperatorTest extends KafkaOperatorTestBase
     node.setConsumer(consumer);
     
     if (isValid) {
-      node.setZookeeper("localhost:" + KafkaOperatorTestBase.TEST_ZOOKEEPER_PORT);
+      node.setZookeeper("localhost:" + KafkaOperatorTestBase.TEST_ZOOKEEPER_PORT[0]);
     }
     
     // Create Test tuple collector

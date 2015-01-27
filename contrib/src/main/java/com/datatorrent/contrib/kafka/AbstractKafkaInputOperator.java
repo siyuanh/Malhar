@@ -206,8 +206,8 @@ public abstract class AbstractKafkaInputOperator<K extends KafkaConsumer> implem
       } else if (parts.length == 2) {
         theClusters.put(KafkaPartition.DEFAULT_CLUSTERID, parts[0] + ":" + parts[1]);
       } else
-        throw new IllegalArgumentException("Wrong zookeeper setting!"
-            + " Valid format should be cluster1:zookeeper1:port1,cluster2:zookeeper2:port2 or zookeeper1:port1,zookeeper:port2");
+        throw new IllegalArgumentException("Wrong zookeeper string: " + zookeeperString + "\n"
+            + " Expected format should be cluster1:zookeeper1:port1,cluster2:zookeeper2:port2 or zookeeper1:port1,zookeeper:port2");
     }
     this.consumer.setZookeeper(theClusters);
   }

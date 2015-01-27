@@ -107,20 +107,24 @@ public class HighlevelKafkaConsumer extends KafkaConsumer
     } else {
       consumerConfig.put("auto.offset.reset", "largest");
     }
-    //Share other properties among all connectors but set zookeepers respectively cause different cluster would use different zookeepers
-    for (String cluster : zookeeper.keySet()) {
-      // create high level consumer for every cluster
-      Properties config = new Properties();
-      config.putAll(consumerConfig);
-      config.setProperty("zookeeper.connect", Joiner.on(',').join(zookeeper.get(cluster)));
-      standardConsumer.put(cluster, kafka.consumer.Consumer.createJavaConsumerConnector(new ConsumerConfig(config)));
-    }
+
   }
 
   @Override
   public void start()
   {
     super.start();
+    //Share other properties among all connectors but set zookeepers respectively cause different cluster would use different zookeepers
+    for (String cluster : zookeeper.keySet()) {
+      // create high level consumer for every cluster
+      Properties config = new Properties();
+      config.putAll(consumerConfig);
+      config.setProperty("zookeeper.connect", Joiner.on(',').join(zookeeper.get(cluster)));
+      // create consumer connector will start a daemon thread to monitor the metadata change 
+      // we want to start this thread until the operator is activated 
+      standardConsumer.put(cluster, kafka.consumer.Consumer.createJavaConsumerConnector(new ConsumerConfig(config)));
+    }
+    
     Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
 
     if (numStream == null || numStream.size() == 0) {
