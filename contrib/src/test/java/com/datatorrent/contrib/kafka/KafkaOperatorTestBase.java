@@ -164,7 +164,7 @@ public class KafkaOperatorTestBase
     }
   }
 
-  private void startZookeeper()
+  public void startZookeeper()
   {
     startZookeeper(0);
     if (hasMultiCluster) {
