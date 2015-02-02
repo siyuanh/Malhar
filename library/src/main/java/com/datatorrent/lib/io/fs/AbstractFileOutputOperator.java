@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 
 import javax.annotation.Nonnull;
@@ -42,6 +41,7 @@ import com.datatorrent.api.BaseOperator;
 import com.datatorrent.api.Context;
 import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.DefaultInputPort;
+import com.datatorrent.api.StreamCodec;
 import com.datatorrent.api.annotation.OperatorAnnotation;
 
 import com.datatorrent.lib.counters.BasicCounters;
@@ -81,6 +81,8 @@ import com.datatorrent.lib.counters.BasicCounters;
  * @tags fs, file, output operator
  *
  * @param <INPUT> This is the input tuple type.
+ *
+ * @since 2.0.0
  */
 @OperatorAnnotation(checkpointableWithinAppWindow = false)
 public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
@@ -180,6 +182,8 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
    */
   private final BasicCounters<MutableLong> fileCounters = new BasicCounters<MutableLong>(MutableLong.class);
 
+  protected StreamCodec<INPUT> streamCodec;
+
   /**
    * This input port receives incoming tuples.
    */
@@ -189,6 +193,17 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
     public void process(INPUT tuple)
     {
       processTuple(tuple);
+    }
+
+    @Override
+    public StreamCodec<INPUT> getStreamCodec()
+    {
+      if (AbstractFileOutputOperator.this.streamCodec == null) {
+        return super.getStreamCodec();
+      }
+      else {
+        return streamCodec;
+      }
     }
   };
 
@@ -427,15 +442,14 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
   @Override
   public void teardown()
   {
-    ConcurrentMap<String, FSDataOutputStream> fileMap = streamsCache.asMap();
     List<String> fileNames = new ArrayList<String>();
     int numberOfFailures = 0;
     IOException savedException = null;
 
     //Close all the streams you can
-    for(String seenFileName: streamsCache.asMap().keySet()) {
-      FSDataOutputStream outputStream = fileMap.get(seenFileName);
-
+    Map<String, FSDataOutputStream> openStreams = streamsCache.asMap();
+    for(String seenFileName: openStreams.keySet()) {
+      FSDataOutputStream outputStream = openStreams.get(seenFileName);
       try {
         outputStream.close();
       }
@@ -445,7 +459,7 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
         //Add names of first N failed files to list
         if(fileNames.size() < MAX_NUMBER_FILES_IN_TEARDOWN_EXCEPTION) {
           fileNames.add(seenFileName);
-          //save excpetion
+          //save exception
           savedException = ex;
         }
       }
@@ -571,7 +585,7 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
    * the name of the file part that has just completed closed.
    * @param finishedFile The name of the file part that has just completed and closed.
    */
-  protected void rotateHook(String finishedFile)
+  protected void rotateHook(@SuppressWarnings("unused") String finishedFile)
   {
     //Do nothing by default
   }
@@ -633,18 +647,14 @@ public abstract class AbstractFileOutputOperator<INPUT> extends BaseOperator
   @Override
   public void endWindow()
   {
-    for (String fileName : streamsCache.asMap().keySet()) {
-      try
-      {
-        FSDataOutputStream fsOutput = streamsCache.get(fileName);
+    try {
+      Map<String, FSDataOutputStream> openStreams = streamsCache.asMap();
+      for (FSDataOutputStream fsOutput : openStreams.values()) {
         fsOutput.hflush();
       }
-      catch (ExecutionException e) {
-        throw new RuntimeException(e);
-      }
-      catch (IOException e) {
-        throw new RuntimeException(e);
-      }
+    }
+    catch (IOException e) {
+      throw new RuntimeException(e);
     }
 
     long currentTimeStamp = System.currentTimeMillis();

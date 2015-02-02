@@ -30,9 +30,12 @@ import org.slf4j.LoggerFactory;
  * committed window and committing the JMS transaction. A failure in such a scenario could cause JMS Messages
  * to be missed or duplicated. However, the chance of this is very small. If you need 100% reliability use
  * the {@link JMSTransactionableStore}.
+ *
+ * @since 2.0.0
  */
 public class FSPsuedoTransactionableStore extends JMSBaseTransactionableStore
 {
+  @SuppressWarnings("unused")
   private static final Logger logger = LoggerFactory.getLogger(FSPsuedoTransactionableStore.class);
 
   /**
@@ -245,12 +248,10 @@ public class FSPsuedoTransactionableStore extends JMSBaseTransactionableStore
   private Path getOperatorRecoveryPath(String appId,
                                        int operatorId)
   {
-    Path path = new Path(DEFAULT_RECOVERY_DIRECTORY + "/" +
+    return new Path(DEFAULT_RECOVERY_DIRECTORY + "/" +
                          appId + "/" +
                          operatorId + "/" +
                          COMMITTED_WINDOW_DIR);
-
-    return path;
   }
 
   /**
@@ -264,12 +265,10 @@ public class FSPsuedoTransactionableStore extends JMSBaseTransactionableStore
                                        int operatorId,
                                        long windowId)
   {
-    Path path = new Path(DEFAULT_RECOVERY_DIRECTORY + "/" +
+    return new Path(DEFAULT_RECOVERY_DIRECTORY + "/" +
                          appId + "/" +
                          operatorId + "/" +
                          COMMITTED_WINDOW_DIR + "/" +
                          windowId);
-
-    return path;
   }
 }

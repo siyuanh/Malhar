@@ -15,12 +15,17 @@
  */
 package com.datatorrent.contrib.hbase;
 
-import com.datatorrent.lib.db.Connectable;
+import java.io.IOException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.security.UserGroupInformation;
 
-import java.io.IOException;
+import com.datatorrent.lib.db.Connectable;
 /**
  * A {@link Connectable} that uses HBase to connect to stores and implements Connectable interface. 
  * <p>
@@ -31,9 +36,20 @@ import java.io.IOException;
  */
 public class HBaseStore implements Connectable {
 
+  public static final String USER_NAME_SPECIFIER = "%USER_NAME%";
+  
+  private static final Logger logger = LoggerFactory.getLogger(HBaseStore.class);
+  
   private String zookeeperQuorum;
   private int zookeeperClientPort;
   protected String tableName;
+  
+  protected String principal;
+  protected String keytabPath;
+  // Default interval 30 min
+  protected long reloginCheckInterval = 30 * 60 * 1000;
+  protected transient Thread loginRenewer;
+  private volatile transient boolean doRelogin;
 
   protected transient HTable table;
 
@@ -95,6 +111,69 @@ public class HBaseStore implements Connectable {
   }
 
   /**
+   * Get the Kerberos principal.
+   *
+   * @return The Kerberos principal
+   */
+  public String getPrincipal()
+  {
+    return principal;
+  }
+
+  /**
+   * Set the Kerberos principal.
+   *
+   * @param principal
+   *            The Kerberos principal
+   */
+  public void setPrincipal(String principal)
+  {
+    this.principal = principal;
+  }
+
+  /**
+   * Get the Kerberos keytab path
+   *
+   * @return The Kerberos keytab path
+   */
+  public String getKeytabPath()
+  {
+    return keytabPath;
+  }
+
+  /**
+   * Set the Kerberos keytab path.
+   *
+   * @param keytabPath
+   *            The Kerberos keytab path
+   */
+  public void setKeytabPath(String keytabPath)
+  {
+    this.keytabPath = keytabPath;
+  }
+
+  /**
+   * Get the interval to check for relogin.
+   *
+   * @return The interval to check for relogin
+   */
+  public long getReloginCheckInterval()
+  {
+    return reloginCheckInterval;
+  }
+
+  /**
+   * Set the interval to check for relogin.
+   *
+   * @param reloginCheckInterval
+   *            The interval to check for relogin
+   */
+  public void setReloginCheckInterval(long reloginCheckInterval)
+  {
+    this.reloginCheckInterval = reloginCheckInterval;
+  }
+
+  /**
    * Get the HBase table .
    * 
    * @return The HBase table
@@ -136,18 +215,69 @@ public class HBaseStore implements Connectable {
 
   @Override
   public void connect() throws IOException {
+    if ((principal != null) && (keytabPath != null)) {
+      String lprincipal = evaluateProperty(principal);
+      String lkeytabPath = evaluateProperty(keytabPath);
+      UserGroupInformation.loginUserFromKeytab(lprincipal, lkeytabPath);
+      doRelogin = true;
+      loginRenewer = new Thread(new Runnable()
+      {
+        @Override
+        public void run()
+        {
+          logger.debug("Renewer starting");
+          try {
+            while (doRelogin) {
+              Thread.sleep(reloginCheckInterval);
+              try {
+                UserGroupInformation.getLoginUser().checkTGTAndReloginFromKeytab();
+              } catch (IOException e) {
+                logger.error("Error trying to relogin from keytab", e);
+              }
+            }
+          } catch (InterruptedException e) {
+            if (doRelogin) {
+              logger.warn("Renewer interrupted... stopping");
+            }
+          }
+          logger.debug("Renewer ending");
+        }
+      });
+      loginRenewer.start();
+    }
     configuration = HBaseConfiguration.create();
-    configuration.set("hbase.zookeeper.quorum", zookeeperQuorum);
-    configuration.set("hbase.zookeeper.property.clientPort", "" 	+ zookeeperClientPort);
+    // The default configuration is loaded from resources in classpath, the following parameters can be optionally set
+    // to override defaults
+    if (zookeeperQuorum != null) {
+      configuration.set("hbase.zookeeper.quorum", zookeeperQuorum);
+    }
+    if (zookeeperClientPort != 0) {
+      configuration.set("hbase.zookeeper.property.clientPort", "" + zookeeperClientPort);
+    }
     table = new HTable(configuration, tableName);
     table.setAutoFlushTo(false);
 
   }
+  
+  private String evaluateProperty(String property) throws IOException
+  {
+    if (property.contains(USER_NAME_SPECIFIER)) {
+     property = property.replaceAll(USER_NAME_SPECIFIER, UserGroupInformation.getLoginUser().getShortUserName()); 
+    }
+    return property;
+  }
 
   @Override
   public void disconnect() throws IOException {
-    // not applicable for hbase
-
+    if (loginRenewer != null) {
+      doRelogin = false;
+      loginRenewer.interrupt();
+      try {
+        loginRenewer.join();
+      } catch (InterruptedException e) {
+        logger.warn("Unsuccessful waiting for renewer to finish. Proceeding to shutdown", e);
+      }
+    }
   }
 
   @Override
