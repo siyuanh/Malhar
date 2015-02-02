@@ -74,7 +74,6 @@ public class KafkaInputBenchmark implements StreamingApplication
       // Create template high-level consumer
 
       Properties props = new Properties();
-      props.put("zookeeper.connect", conf.get("kafka.zookeeper"));
       props.put("group.id", "main_group");
       props.put("auto.offset.reset", "smallest");
       consumer = new HighlevelKafkaConsumer(props);
@@ -85,7 +84,6 @@ public class KafkaInputBenchmark implements StreamingApplication
 
     
     bpkio.setInitialPartitionCount(1);
-    bpkio.setZookeeper(conf.get("kafka.zookeeper"));
     //bpkio.setTuplesBlast(1024 * 1024);
     bpkio.setConsumer(consumer);
     bpkio = dag.addOperator("KafkaBenchmarkConsumer", bpkio);

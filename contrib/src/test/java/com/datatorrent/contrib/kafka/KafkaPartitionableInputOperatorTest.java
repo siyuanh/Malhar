@@ -178,7 +178,7 @@ public class KafkaPartitionableInputOperatorTest extends KafkaOperatorTestBase
     lc.runAsync();
 
     // Wait 30s for consumer finish consuming all the messages
-    Assert.assertTrue("TIMEOUT: 30s ", latch.await(40000, TimeUnit.MILLISECONDS));
+    Assert.assertTrue("TIMEOUT: 40s ", latch.await(40000, TimeUnit.MILLISECONDS));
 
     // Check results
     Assert.assertEquals("Collections size", 1, collections.size());

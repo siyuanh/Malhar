@@ -168,7 +168,7 @@ public class KafkaMetadataUtil
         } catch (NumberFormatException e) {
           throw new IllegalArgumentException("Wrong format for broker url, should be \"broker1:port1\"");
         } catch (Exception e) {
-          logger.error("Highly possible some broker(s) for topic {} are dead", topic, e);
+          logger.warn("Broker {} is unavailable or in bad state!", broker);
           // skip and try next broker
         }
       }
